@@ -270,4 +270,9 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/
 )
 
+install(FILES
+  demo_nodes_cpp.nodl.xml
+  DESTINATION share/${PROJECT_NAME}/
+)
+
 ament_package()
