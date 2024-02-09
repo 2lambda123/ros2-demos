@@ -33,6 +33,22 @@ class MonitoredTopic:
     """Monitor for the statistics and status of a single topic."""
 
     def __init__(self, topic_id, stale_time, lock):
+        """"Initializes a new instance of the Topic class with the given topic ID, stale time, and lock."
+        Parameters:
+            - topic_id (str): The unique identifier for the topic.
+            - stale_time (int): The maximum amount of time in seconds before the topic's data is considered stale.
+            - lock (threading.Lock): A lock used to synchronize access to the topic's data.
+        Returns:
+            - None: This function does not return any value.
+        Processing Logic:
+            - Initializes the expected value, expected value timer, initial value, received values, reception rate over time, status, status changed, and time of last data attributes.
+            - Sets the expected value and initial value to None.
+            - Sets the status to 'Offline'.
+            - Sets the status changed flag to False.
+            - Sets the time of last data to None.
+            - Stores the given topic ID and stale time.
+            - Stores the given lock for synchronization."""
+        
         self.expected_value = None
         self.expected_value_timer = None
         self.initial_value = None
@@ -46,21 +62,66 @@ class MonitoredTopic:
         self.topic_id = topic_id
 
     def increment_expected_value(self):
+        """Increments the expected value by 1.
+        Parameters:
+            - self (object): The object itself.
+        Returns:
+            - None: Does not return anything.
+        Processing Logic:
+            - Locks the object to prevent race conditions.
+            - Checks if the expected value is not None.
+            - Increments the expected value by 1."""
+        
         with self.lock:
             if self.expected_value is not None:
                 self.expected_value += 1
 
     def allowed_latency_timer_callback(self):
+        """This function cancels the allowed latency timer and resets the expected value timer.
+        Parameters:
+            - self (class): The class instance that the function is being called on.
+        Returns:
+            - None: This function does not return any value.
+        Processing Logic:
+            - Cancels allowed latency timer.
+            - Resets expected value timer."""
+        
         self.allowed_latency_timer.cancel()
         self.expected_value_timer.reset()
 
     def get_data_from_msg(self, msg):
+        """"Extracts data from a message and returns an integer value.
+        Parameters:
+            - msg (object): A message object containing data.
+        Returns:
+            - int: An integer value extracted from the message.
+        Processing Logic:
+            - Extracts data from message frame_id.
+            - Finds the first underscore in the data.
+            - If underscore is found, returns data before underscore.
+            - If underscore is not found, returns entire data.
+            - Converts data to integer if possible.
+            - Returns 0 if data is empty.""""
+        
         data = msg.frame_id
         idx = data.find('_')
         data = data[:idx] if idx != -1 else data
         return int(data) if data else 0
 
     def topic_data_callback(self, msg, logger_=logger):
+        """This function handles the received data from a topic and updates the expected value and status accordingly.
+        Parameters:
+            - msg (type): A message containing the received data.
+            - logger_ (type): (Optional) A logger object to log information.
+        Returns:
+            - status (str): The current status of the topic.
+        Processing Logic:
+            - Update expected value if first value from topic.
+            - Update status if topic was previously offline.
+            - Update expected value and reset timer.
+            - Update time of last data.
+            - Check if status has changed."""
+        
         received_value = self.get_data_from_msg(msg)
         logger_.info('%s: %s' % (self.topic_id, str(received_value)))
         status = 'Alive'
@@ -86,6 +147,20 @@ class MonitoredTopic:
             self.status = status
 
     def check_status(self, current_time=time.time()):
+        """Checks the status of a topic and returns whether the status has changed.
+        Parameters:
+            - current_time (float): The current time in seconds since the epoch. Defaults to the current time.
+        Returns:
+            - status_changed (bool): True if the status has changed, False otherwise.
+        Processing Logic:
+            - Checks if the topic has gone offline or come back online.
+            - Checks if the topic has gone stale.
+            - Sets the status to 'Stale' if it has gone stale.
+            - Resets the status_changed flag to False.
+        Example:
+            status_changed = check_status(current_time=1609459200.0)
+            # status_changed = True"""
+        
         # A status could have changed if a topic goes offline or comes back online
         status_changed = self.status_changed
 
@@ -100,6 +175,21 @@ class MonitoredTopic:
         return status_changed
 
     def current_reception_rate(self, window_size):
+        """Calculates the current reception rate of a device.
+        Parameters:
+            - window_size (int): The size of the window in which the expected values are checked.
+        Returns:
+            - rate (float): The current reception rate as a decimal value.
+        Processing Logic:
+            - Checks if the device is currently offline.
+            - Calculates the expected values within the window.
+            - Counts how many of the expected values have been received.
+            - Calculates the reception rate by dividing the count by the total expected values.
+        Example:
+            device = Device()
+            device.current_reception_rate(10)
+            # Returns 0.75 if 3 out of 4 expected values were received within the window of size 10."""
+        
         rate = None
         if self.status != 'Offline':
             expected_values = range(
@@ -115,6 +205,18 @@ class TopicMonitor:
     """Monitor of a set of topics that match a specified topic name pattern."""
 
     def __init__(self, window_size):
+        """Initializes the object with the given window size.
+        Parameters:
+            - window_size (int): The size of the window to be used for data processing.
+        Returns:
+            - None: This function does not return anything.
+        Processing Logic:
+            - Compile regular expression pattern.
+            - Initialize empty dictionaries and a lock.
+            - Set the name of the reception rate topic.
+            - Set the status changed flag to False.
+            - Store the given window size."""
+        
         self.data_topic_pattern = re.compile(r'(/(?P<data_name>\w*)_data_?(?P<reliability>\w*))')
         self.monitored_topics = {}
         self.monitored_topics_lock = Lock()
@@ -126,6 +228,25 @@ class TopicMonitor:
     def add_monitored_topic(
             self, topic_type, topic_name, node, qos_profile,
             expected_period=1.0, allowed_latency=1.0, stale_time=1.0):
+        """This function adds a subscription to a given topic and creates a timer for maintaining the expected value received on the topic. It also creates a publisher for the reception rate of the topic.
+        Parameters:
+            - topic_type (str): The type of the topic to be subscribed to.
+            - topic_name (str): The name of the topic to be subscribed to.
+            - node (Node): The node that will be used to create the subscription, timer, and publisher.
+            - qos_profile (QoSProfile): The quality of service profile to be used for the subscription.
+            - expected_period (float): The time interval for maintaining the expected value received on the topic. Default value is 1.0.
+            - allowed_latency (float): The time interval for the allowed latency before starting the expected value timer. Default value is 1.0.
+            - stale_time (float): The time interval for determining if the topic data is stale. Default value is 1.0.
+        Returns:
+            - None: This function does not return any value.
+        Processing Logic:
+            - Creates a MonitoredTopic object for the given topic name and stale time.
+            - Subscribes to the topic using the given node and qos profile.
+            - Creates a timer for maintaining the expected value received on the topic.
+            - Creates a one-shot timer for the allowed latency before starting the expected value timer.
+            - Creates a publisher for the reception rate of the topic.
+            - Adds the expected value timer, allowed latency timer, publisher, and monitored topic to their respective lists/objects."""
+        
         # Create a subscription to the topic
         monitored_topic = MonitoredTopic(topic_name, stale_time, lock=self.monitored_topics_lock)
         node_logger = node.get_logger()
@@ -167,6 +288,15 @@ class TopicMonitor:
             self.monitored_topics[topic_name] = monitored_topic
 
     def is_supported_type(self, type_name):
+        """This function checks if the given type name is supported.
+        Parameters:
+            - type_name (str): The name of the type to be checked.
+        Returns:
+            - bool: True if the type is supported, False otherwise.
+        Processing Logic:
+            - Checks if the given type name matches 'std_msgs/msg/Header'.
+            - Returns True if it matches, False otherwise."""
+        
         return type_name == 'std_msgs/msg/Header'
 
     def get_topic_info(self, topic_name):
@@ -187,6 +317,16 @@ class TopicMonitor:
             return topic_info
 
     def update_topic_statuses(self):
+        """Updates the status of all monitored topics and returns whether any status has changed.
+        Parameters:
+            - self (class): The class instance.
+        Returns:
+            - any_status_changed (bool): True if any status has changed, False otherwise.
+        Processing Logic:
+            - Update status of all topics.
+            - Check if any status has changed.
+            - Return whether any status has changed."""
+        
         any_status_changed = False
         current_time = time.time()
         with self.monitored_topics_lock:
@@ -196,6 +336,21 @@ class TopicMonitor:
         return any_status_changed
 
     def output_status(self):
+        """Outputs the status of the monitored topics.
+        Parameters:
+            - self (class): The class object.
+        Returns:
+            - None: No return value.
+        Processing Logic:
+            - Logs the status of each monitored topic.
+            - Uses the logger.info() function.
+            - Acquires the monitored_topics_lock.
+            - Iterates through the monitored_topics dictionary.
+            - Logs the topic_id and the status of the monitored_topic.
+            - Uses the string formatting operator (%).
+            - Logs a line of dashes.
+            - Uses the logger.info() function."""
+        
         logger.info('---------------')
         with self.monitored_topics_lock:
             for topic_id, monitored_topic in self.monitored_topics.items():
@@ -203,11 +358,34 @@ class TopicMonitor:
         logger.info('---------------')
 
     def check_status(self):
+        """"Checks the status of a topic and outputs the status if it has changed.
+        Parameters:
+            - self (object): The object containing the topic to be checked.
+        Returns:
+            - status_changed (bool): True if the status has changed, False otherwise.
+        Processing Logic:
+            - Checks if the status has changed.
+            - Updates the topic statuses.
+            - Outputs the status if it has changed.
+            - Returns a boolean indicating if the status has changed.
+        Example:
+            check_status(topic) # Returns True if the status has changed and outputs the new status.""""
+        
         if status_changed := self.update_topic_statuses():
             self.output_status()
         return status_changed
 
     def calculate_statistics(self):
+        """Calculates the reception rate for monitored topics and publishes it.
+        Parameters:
+            - self (object): The object calling the function.
+        Returns:
+            - None: The function does not return anything.
+        Processing Logic:
+            - Calculate reception rate for each topic.
+            - Append rate to reception rate over time.
+            - Publish the rate for each topic."""
+        
         with self.monitored_topics_lock:
             for topic_id, monitored_topic in self.monitored_topics.items():
                 rate = monitored_topic.current_reception_rate(self.window_size)
@@ -217,6 +395,16 @@ class TopicMonitor:
                 self.publishers[topic_id].publish(rateMsg)
 
     def get_window_size(self):
+        """"Returns the window size of the object.
+        Parameters:
+            - self (object): The object whose window size is being retrieved.
+        Returns:
+            - int: The window size of the object.
+        Processing Logic:
+            - Retrieve the window size attribute.
+            - Return the window size.
+        """"
+        
         return self.window_size
 
 
@@ -224,6 +412,8 @@ class TopicMonitorDisplay:
     """Display of the monitored topic reception rates."""
 
     def __init__(self, topic_monitor, update_period):
+        """"""
+        
         self.colors = 'bgrcmykw'
         self.markers = 'o>sp*hDx+'
         self.monitored_topics = []
@@ -238,6 +428,8 @@ class TopicMonitorDisplay:
         self.make_plot()
 
     def make_plot(self):
+        """"""
+        
         self.fig = plt.figure()
         plt.title('Reception rate over time')
         plt.xlabel('Time (s)')
@@ -252,6 +444,8 @@ class TopicMonitorDisplay:
             [box.x0, box.y0 + box.height * shrink_amnt, box.width, box.height * (1 - shrink_amnt)])
 
     def add_monitored_topic(self, topic_name):
+        """"""
+        
         # Make first instance of the line so that we only have to update it later
         line, = self.ax.plot(
             [], [], '-', color=self.colors[self.topic_count % len(self.colors)],
@@ -266,6 +460,8 @@ class TopicMonitorDisplay:
         self.monitored_topics.append(topic_name)
 
     def update_display(self):
+        """"""
+        
         now = time.time()
         now_relative = now - self.start_time
         self.x_data.append(now_relative)
@@ -293,6 +489,8 @@ class TopicMonitorDisplay:
 class DataReceivingThread(Thread):
 
     def __init__(self, topic_monitor, options):
+        """"""
+        
         super(DataReceivingThread, self).__init__()
         rclpy.init()
         self.topic_monitor = topic_monitor
