@@ -203,8 +203,7 @@ class TopicMonitor:
         logger.info('---------------')
 
     def check_status(self):
-        status_changed = self.update_topic_statuses()
-        if status_changed:
+        if status_changed := self.update_topic_statuses():
             self.output_status()
         return status_changed
 
@@ -322,8 +321,7 @@ def run_topic_listening(node, topic_monitor, options):
 
         for topic_name, type_names in topic_names_and_types:
             # Infer the appropriate QoS profile from the topic name
-            topic_info = topic_monitor.get_topic_info(topic_name)
-            if topic_info is None:
+            if (topic_info := topic_monitor.get_topic_info(topic_name)) is None:
                 # The topic is not for being monitored
                 continue
 
@@ -345,8 +343,7 @@ def run_topic_listening(node, topic_monitor, options):
                     already_ignored_topics.add(topic_name)
                 continue
 
-            is_new_topic = topic_name and topic_name not in topic_monitor.monitored_topics
-            if is_new_topic:
+            if is_new_topic := topic_name and topic_name not in topic_monitor.monitored_topics:
                 # Register new topic with the monitor
                 qos_profile = QoSProfile(depth=10)
                 qos_profile.depth = QOS_DEPTH
