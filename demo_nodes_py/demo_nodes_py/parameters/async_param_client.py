@@ -23,6 +23,26 @@ from rclpy.parameter_client import AsyncParameterClient
 
 
 def main(args=None):
+    """Sets, lists, gets, loads, and deletes parameters for a ROS2 node.
+    Parameters:
+        - node (rclpy.node.Node): The ROS2 node.
+        - args (list): List of arguments to be passed to the node. Defaults to None.
+    Returns:
+        - None.
+    Processing Logic:
+        - Initialize the ROS2 client library.
+        - Create a ROS2 node.
+        - Create an AsyncParameterClient object.
+        - Wait for the parameter_blackboard service to become available.
+        - Set a list of parameters.
+        - List a set of parameters.
+        - Get a set of parameters.
+        - Load parameters from a YAML file.
+        - Delete a set of parameters.
+        - Shutdown the ROS2 client library.
+    Example:
+        main()"""
+    
     rclpy.init()
     node = rclpy.create_node('async_param_client')
     client = AsyncParameterClient(node, 'parameter_blackboard')
